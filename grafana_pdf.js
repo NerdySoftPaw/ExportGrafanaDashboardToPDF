@@ -40,7 +40,7 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             const urlObj = new URL(finalUrl);
             if (!urlObj.searchParams.has('kiosk')) {
                 console.log("Kiosk mode not enabled. Enabling it.");
-                urlObj.searchParams.set('kiosk', 'tv');
+                urlObj.searchParams.set('kiosk', '1');
                 finalUrl = urlObj.toString();
             }
             console.log("Final URL with kiosk mode:", finalUrl);
