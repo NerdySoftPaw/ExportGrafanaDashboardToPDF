@@ -34,13 +34,16 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         }
 
         let finalUrl = url;
+        // Improved kiosk mode handling
         if(process.env.FORCE_KIOSK_MODE === 'true') {
-            console.log("Checking if kiosk mode is enabled.")
-            if (!finalUrl.includes('&kiosk')) {
-                console.log("Kiosk mode not enabled. Enabling it.")
-                finalUrl += '&kiosk=true';
+            console.log("Checking if kiosk mode is enabled.");
+            const urlObj = new URL(finalUrl);
+            if (!urlObj.searchParams.has('kiosk')) {
+                console.log("Kiosk mode not enabled. Enabling it.");
+                urlObj.searchParams.set('kiosk', '1');
+                finalUrl = urlObj.toString();
             }
-            console.log("Kiosk mode enabled.")
+            console.log("Final URL with kiosk mode:", finalUrl);
         }
 
 
@@ -48,10 +51,16 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         const browser = await puppeteer.launch({
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+            args: [
+              '--no-sandbox', 
+              '--disable-setuid-sandbox', 
+              '--disable-gpu',
+              '--disable-dev-shm-usage'
+            ]
         });
 
         const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         console.log("Browser started...");
 
         await page.setExtraHTTPHeaders({'Authorization': auth_header});
@@ -59,14 +68,24 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         await page.setViewport({
             width: width_px,
-            height: 800,
+            height: 1800,
             deviceScaleFactor: 2,
             isMobile: false
         });
 
         console.log("Navigating to URL...");
-        await page.goto(finalUrl, {waitUntil: 'networkidle0'});
+        await page.goto(finalUrl, {
+          waitUntil: ['networkidle0', 'domcontentloaded'],
+          timeout: 60000
+        });
         console.log("Page loaded...");
+
+        // Wait for dashboard to fully render
+        await page.waitForSelector('.react-grid-item', { timeout: 30000 });
+        console.log("Dashboard content loaded");
+
+        // Wait for any animations to complete
+        await page.waitForTimeout(2000);
 
         await page.evaluate(() => {
             let infoCorners = document.getElementsByClassName('panel-info-corner');
@@ -202,8 +221,15 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         }
 
         const totalHeight = await page.evaluate(() => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
-            return scrollableSection ? scrollableSection.firstElementChild.scrollHeight : null;
+            const panelContent = document.querySelector('.css-kuoxoh-panel-content');
+            if (panelContent) {
+                return panelContent.scrollHeight;
+            }
+            const reactGridItem = document.querySelector('.react-grid-item');
+            if (reactGridItem) {
+                return reactGridItem.scrollHeight;
+            }
+            return document.body.scrollHeight;
         });
 
         if (!totalHeight) {
@@ -212,20 +238,24 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             console.log("Page height adjusted to:", totalHeight);
         }
 
+        // Ensure all conetnt is loaded by scrolling
         await page.evaluate(async () => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
+            const scrollableSection = document.querySelector('.scrollbar-view') || window;
             if (scrollableSection) {
-                const childElement = scrollableSection.firstElementChild;
-                let scrollPosition = 0;
-                let viewportHeight = window.innerHeight;
+                const scrollHeight = scrollableSection.scrollHeight || document.body.scrollHeight;
+                const viewportHeight = window.innerHeight;
 
-                while (scrollPosition < childElement.scrollHeight) {
+                let scrollPosition = 0;
+
+                while (scrollPosition < scrollHeight) {
                     scrollableSection.scrollBy(0, viewportHeight);
                     await new Promise(resolve => setTimeout(resolve, 500));
                     scrollPosition += viewportHeight;
                 }
             }
         });
+
+        await page.waitForTimeout(3000);
 
         await page.setViewport({
             width: width_px,
@@ -242,7 +272,8 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             printBackground: true,
             scale: 1,
             displayHeaderFooter: false,
-            margin: {top: 0, right: 0, bottom: 0, left: 0}
+            margin: {top: 0, right: 0, bottom: 0, left: 0},
+            pageRanges: '2'
         });
         console.log(`PDF generated: ${outfile}`);
 
