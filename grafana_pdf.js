@@ -43,7 +43,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             console.log("Kiosk mode enabled.")
         }
 
-
         console.log("Starting browser...");
         const browser = await puppeteer.launch({
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -67,6 +66,10 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         console.log("Navigating to URL...");
         await page.goto(finalUrl, {waitUntil: 'networkidle0'});
         console.log("Page loaded...");
+
+        // Improved waiting strategy for Grafana 12
+        console.log("Waiting for panels to initialize...");
+        await page.waitForTimeout(3000); // Initial wait for panels to start loading
 
         await page.evaluate(() => {
             let infoCorners = document.getElementsByClassName('panel-info-corner');
@@ -188,6 +191,24 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             throw new Error("Login page detected. Check your credentials.");
         }
 
+        // Debug panel count and status - improved for Grafana 12
+        const panelCount = await page.evaluate(() => {
+            const panelSelectors = [
+                '[data-testid="panel"]',
+                '.panel-container',
+                '.react-grid-item',
+                '.dashboard-panel'
+            ];
+
+            let counts = {};
+            for (const selector of panelSelectors) {
+                const elements = document.querySelectorAll(selector);
+                counts[selector] = elements.length;
+            }
+            return counts;
+        });
+        console.log("Panel detection counts:", panelCount);
+
         if(process.env.DEBUG_MODE === 'true') {
             const documentHTML = await page.evaluate(() => {
                 return document.querySelector("*").outerHTML;
@@ -199,37 +220,299 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             fs.writeFileSync(filename, documentHTML);
             console.log("Debug HTML file saved at:", filename);
 
+            // Enhanced debug information for panel visibility
+            const panelInfo = await page.evaluate(() => {
+                const allSelectors = [
+                    '[data-testid="panel"]',
+                    '.panel-container',
+                    '.react-grid-item',
+                    '.dashboard-panel'
+                ];
+
+                // Find which selector works for this Grafana version
+                let panels = [];
+                let usedSelector = '';
+
+                for (const selector of allSelectors) {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements && elements.length > 0) {
+                        panels = Array.from(elements);
+                        usedSelector = selector;
+                        break;
+                    }
+                }
+
+                return {
+                    usedSelector,
+                    panelCount: panels.length,
+                    panels: panels.map((panel, index) => {
+                        const rect = panel.getBoundingClientRect();
+                        const style = window.getComputedStyle(panel);
+                        return {
+                            index,
+                            visible: rect.width > 0 && rect.height > 0,
+                            displayed: style.display !== 'none',
+                            position: {
+                                top: rect.top,
+                                left: rect.left,
+                                width: rect.width,
+                                height: rect.height
+                            },
+                            computedStyle: {
+                                display: style.display,
+                                visibility: style.visibility,
+                                opacity: style.opacity
+                            }
+                        };
+                    })
+                };
+            });
+            console.log("Panel detection details:", JSON.stringify(panelInfo, null, 2));
         }
 
-        const totalHeight = await page.evaluate(() => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
-            return scrollableSection ? scrollableSection.firstElementChild.scrollHeight : null;
-        });
-
-        if (!totalHeight) {
-            throw new Error("Unable to determine the page height. The selector '.scrollbar-view' might be incorrect or missing.");
-        } else {
-            console.log("Page height adjusted to:", totalHeight);
-        }
-
+        // IMPROVED: Enhanced panel detection and rendering for Grafana 12 compatibility
+        console.log("Ensuring panels are properly rendered...");
         await page.evaluate(async () => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
-            if (scrollableSection) {
-                const childElement = scrollableSection.firstElementChild;
-                let scrollPosition = 0;
-                let viewportHeight = window.innerHeight;
+            // Force all known panel types to be visible
+            const panelSelectors = [
+                '[data-testid="panel"]',
+                '.panel-container',
+                '.react-grid-item',
+                '.dashboard-panel',
+                '.grafana-dashboard-panel'
+            ];
 
-                while (scrollPosition < childElement.scrollHeight) {
-                    scrollableSection.scrollBy(0, viewportHeight);
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    scrollPosition += viewportHeight;
+            for (const selector of panelSelectors) {
+                const panels = document.querySelectorAll(selector);
+                if (panels.length > 0) {
+                    console.log(`Found ${panels.length} panels with selector ${selector}`);
+
+                    // Make sure all panels are visible
+                    Array.from(panels).forEach((panel, i) => {
+                        panel.style.display = 'block';
+                        panel.style.visibility = 'visible';
+                        panel.style.opacity = '1';
+                        console.log(`Ensured visibility of panel ${i+1}`);
+                    });
                 }
             }
         });
 
+        // Wait longer for lazy-loaded panels in Grafana 12
+        console.log("Waiting for all panels to fully render...");
+        await page.waitForTimeout(process.env.PANEL_RENDER_TIMEOUT || 8000);
+
+        // IMPROVED: Enhanced height detection with Grafana 12 specific selectors
+        const totalHeight = await page.evaluate(() => {
+            console.log("Attempting to detect page height with multiple selectors...");
+
+            // Priority list of selectors for different Grafana versions
+            const selectors = [
+                '[data-testid="dashboard-grid"]',       // Grafana 12 dashboard grid (highest priority)
+                '[data-testid="scrollbar-view"]',       // Grafana 11.5+
+                '.scrollbar-view',                      // Grafana <= 11.4
+                '.main-view',                           // Alternative main view
+                '.dashboard-container',                 // Dashboard container
+                '.react-grid-layout',                   // Dashboard panels grid
+                '.dashboard-scroll',                    // Scrollable dashboard area
+                'main',                                 // Main HTML element
+                '.panel-container',                     // Panel container fallback
+                'body'                                  // Ultimate fallback
+            ];
+
+            let scrollableSection = null;
+            let selectorUsed = '';
+
+            // Try each selector until we find one
+            for (const selector of selectors) {
+                console.log(`Trying selector: ${selector}`);
+                scrollableSection = document.querySelector(selector);
+                if (scrollableSection) {
+                    selectorUsed = selector;
+                    console.log(`Successfully found element with selector: ${selector}`);
+                    break;
+                }
+            }
+
+            if (!scrollableSection) {
+                console.log("No suitable element found, using document.body as fallback");
+                scrollableSection = document.body;
+                selectorUsed = 'body (fallback)';
+            }
+
+            // Different height calculation strategies
+            let height = null;
+
+            // NEW: Grafana 12 specific panel height calculation
+            const allPanelSelectors = [
+                '[data-testid="panel"]',
+                '.panel-container',
+                '.react-grid-item',
+                '.dashboard-panel'
+            ];
+
+            let panels = [];
+            for (const selector of allPanelSelectors) {
+                const elements = document.querySelectorAll(selector);
+                if (elements && elements.length > 0) {
+                    panels = Array.from(elements);
+                    console.log(`Using ${selector} for panel height calculation, found ${panels.length} panels`);
+                    break;
+                }
+            }
+
+            if (panels.length > 0) {
+                let maxBottom = 0;
+                panels.forEach((panel, idx) => {
+                    const rect = panel.getBoundingClientRect();
+                    console.log(`Panel ${idx+1} position: top=${rect.top}, bottom=${rect.bottom}`);
+                    maxBottom = Math.max(maxBottom, rect.bottom);
+                });
+
+                if (maxBottom > 100) {
+                    height = Math.ceil(maxBottom + 100); // Add padding
+                    console.log(`Height calculated from ${panels.length} panels: ${height}`);
+                    return height;
+                }
+            }
+
+            // Original height calculation strategies as fallback
+            if (!height && scrollableSection.firstElementChild && scrollableSection.firstElementChild.scrollHeight > 100) {
+                height = scrollableSection.firstElementChild.scrollHeight;
+                console.log(`Height from firstElementChild.scrollHeight: ${height} (selector: ${selectorUsed})`);
+            }
+
+            if (!height && scrollableSection.scrollHeight > 100) {
+                height = scrollableSection.scrollHeight;
+                console.log(`Height from element.scrollHeight: ${height} (selector: ${selectorUsed})`);
+            }
+
+            if (!height) {
+                const rect = scrollableSection.getBoundingClientRect();
+                if (rect.height > 100) {
+                    height = Math.ceil(rect.height);
+                    console.log(`Height from getBoundingClientRect: ${height} (selector: ${selectorUsed})`);
+                }
+            }
+
+            // Fallback height
+            if (!height) {
+                height = Math.max(window.innerHeight * 2, 1600);
+                console.log(`Using fallback height: ${height}`);
+            }
+
+            console.log(`Final height determined: ${height} using selector: ${selectorUsed}`);
+            return height;
+        });
+
+        if (!totalHeight || totalHeight < 100) {
+            console.log("Warning: Could not determine reliable page height, using fallback of 1600px");
+            const fallbackHeight = 1600;
+
+            // Advanced scrolling technique for Grafana 12
+            await page.evaluate(async () => {
+                console.log("Performing comprehensive scrolling to ensure all content is loaded...");
+
+                // Progressive scrolling with pauses
+                const viewportHeight = window.innerHeight;
+                const maxScrolls = 15;  // Increased for Grafana 12
+                const scrollDelay = 500;
+
+                for (let i = 0; i < maxScrolls; i++) {
+                    window.scrollTo(0, i * viewportHeight / 2);
+                    await new Promise(resolve => setTimeout(resolve, scrollDelay));
+                }
+
+                // Scroll back to top
+                window.scrollTo(0, 0);
+                await new Promise(resolve => setTimeout(resolve, scrollDelay));
+            });
+
+            console.log("Page height set to fallback:", fallbackHeight);
+        } else {
+            console.log("Page height successfully determined:", totalHeight);
+
+            // Enhanced scrolling for Grafana 12
+            await page.evaluate(async () => {
+                console.log("Performing enhanced scrolling to load all content...");
+
+                // Progressive scroll approach
+                const viewportHeight = window.innerHeight;
+                const totalScrolls = Math.ceil(document.body.scrollHeight / (viewportHeight / 2));
+                const scrollDelay = 500;
+
+                console.log(`Planning ${totalScrolls} scroll steps`);
+
+                // First scroll down gradually
+                for (let i = 0; i < totalScrolls; i++) {
+                    window.scrollTo(0, i * viewportHeight / 2);
+                    await new Promise(resolve => setTimeout(resolve, scrollDelay));
+                }
+
+                // Then scroll back up gradually
+                for (let i = totalScrolls; i >= 0; i--) {
+                    window.scrollTo(0, i * viewportHeight / 2);
+                    await new Promise(resolve => setTimeout(resolve, scrollDelay));
+                }
+
+                console.log("Progressive scrolling completed");
+            });
+        }
+
+        // Add a final check for all panels and ensure they're visible
+        await page.evaluate(async () => {
+            console.log("Final check for panel visibility...");
+
+            // Find all panels with any known selector
+            const panelSelectors = [
+                '[data-testid="panel"]',
+                '.panel-container',
+                '.react-grid-item',
+                '.dashboard-panel',
+                '.grafana-panel'
+            ];
+
+            let allPanels = [];
+            for (const selector of panelSelectors) {
+                const panels = document.querySelectorAll(selector);
+                if (panels && panels.length > 0) {
+                    allPanels = Array.from(panels);
+                    console.log(`Found ${panels.length} panels with selector ${selector}`);
+                    break;
+                }
+            }
+
+            if (allPanels.length > 0) {
+                // Make sure all panels are visible
+                allPanels.forEach((panel, i) => {
+                    panel.style.display = 'block';
+                    panel.style.visibility = 'visible';
+                    panel.style.opacity = '1';
+
+                    // Ensure any lazy-loaded content inside panels is visible
+                    const charts = panel.querySelectorAll('.graph-canvas, .graph-panel, canvas, svg');
+                    charts.forEach(chart => {
+                        chart.style.visibility = 'visible';
+                        chart.style.opacity = '1';
+                    });
+                });
+
+                console.log(`Ensured visibility of ${allPanels.length} panels`);
+            }
+
+            // Extra wait to ensure charts render
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        });
+
+        // Final wait for all panels to be fully rendered
+        console.log("Final wait for all panels to render completely...");
+        await page.waitForTimeout(5000);
+
+        const finalHeight = totalHeight && totalHeight >= 100 ? totalHeight : 1600;
+
         await page.setViewport({
             width: width_px,
-            height: totalHeight,
+            height: finalHeight,
             deviceScaleFactor: 2,
             isMobile: false
         });
@@ -238,7 +521,7 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         await page.pdf({
             path: outfile,
             width: width_px + 'px',
-            height: totalHeight + 'px',
+            height: finalHeight + 'px',
             printBackground: true,
             scale: 1,
             displayHeaderFooter: false,
