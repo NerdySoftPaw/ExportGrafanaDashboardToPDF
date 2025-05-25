@@ -1,7 +1,6 @@
 'use strict';
 
 const puppeteer = require('puppeteer');
-const fetch = require('node-fetch');
 const fs = require('fs');
 
 console.log("Script grafana_pdf.js started...");
@@ -69,7 +68,10 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         // Improved waiting strategy for Grafana 12
         console.log("Waiting for panels to initialize...");
-        await page.waitForTimeout(3000); // Initial wait for panels to start loading
+        await page.evaluate(timeout => {
+            return new Promise(resolve => setTimeout(resolve, timeout));
+        }, 3000);
+        // Initial wait for panels to start loading
 
         await page.evaluate(() => {
             let infoCorners = document.getElementsByClassName('panel-info-corner');
@@ -300,7 +302,10 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         // Wait longer for lazy-loaded panels in Grafana 12
         console.log("Waiting for all panels to fully render...");
-        await page.waitForTimeout(process.env.PANEL_RENDER_TIMEOUT || 8000);
+        await page.evaluate(timeout => {
+            return new Promise(resolve => setTimeout(resolve, timeout));
+        }, process.env.PANEL_RENDER_TIMEOUT || 8000);
+
 
         // IMPROVED: Enhanced height detection with Grafana 12 specific selectors
         const totalHeight = await page.evaluate(() => {
@@ -506,7 +511,9 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         // Final wait for all panels to be fully rendered
         console.log("Final wait for all panels to render completely...");
-        await page.waitForTimeout(5000);
+        await page.evaluate(timeout => {
+            return new Promise(resolve => setTimeout(resolve, timeout));
+        }, 5000);
 
         const finalHeight = totalHeight && totalHeight >= 100 ? totalHeight : 1600;
 
