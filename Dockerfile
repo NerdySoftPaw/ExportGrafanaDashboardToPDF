@@ -19,6 +19,9 @@ COPY server.js .
 COPY .env ./
 COPY generate-pdf.sh ./
 
+# Create output and debug directories
+RUN mkdir -p output debug
+
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Default port 3001 if not found in .env
