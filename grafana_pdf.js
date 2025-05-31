@@ -66,12 +66,92 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         await page.goto(finalUrl, {waitUntil: 'networkidle0'});
         console.log("Page loaded...");
 
+        // New function: expandCollapsedPanels
+        async function expandCollapsedPanels(page) {
+            const debugMode = process.env.DEBUG_MODE === 'true';
+            if (debugMode) console.log('[DEBUG] Searching for collapsed panels/rows...');
+            
+            // Panel and row selectors for different Grafana versions
+            const selectors = [
+                '[data-testid="panel"][aria-expanded="false"]',
+                '.panel-collapsed',
+                '.row-collapsed',
+                '.dashboard-row--collapsed',
+                '.dashboard-row[aria-expanded="false"]',
+                '.panel-title-container .fa-chevron-right',
+                '.panel-title-container .fa-angle-right',
+                '.panel-title-container .fa-caret-right',
+                '.dashboard-row__title .fa-chevron-right',
+                '.dashboard-row__title .fa-angle-right',
+                '.dashboard-row__title .fa-caret-right',
+                '.row-title-container .fa-chevron-right',
+                '.row-title-container .fa-angle-right',
+                '.row-title-container .fa-caret-right'
+            ];
+            
+            const expanded = await page.evaluate(async (selectors, debugMode) => {
+                let expandedCount = 0;
+                
+                for (const selector of selectors) {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements.length > 0 && debugMode) {
+                        console.log(`[DEBUG] Found expandable elements for ${selector}: ${elements.length}`);
+                    }
+                    
+                    for (const el of elements) {
+                        try {
+                            // Try clicking on the expand icon
+                            if (typeof el.click === 'function') {
+                                el.click();
+                                expandedCount++;
+                                if (debugMode) console.log(`[DEBUG] Clicked on element: ${selector}`);
+                            } else {
+                                // Fallback: Try clicking on parent element
+                                if (el.parentElement && typeof el.parentElement.click === 'function') {
+                                    el.parentElement.click();
+                                    expandedCount++;
+                                    if (debugMode) console.log(`[DEBUG] Clicked on parent element: ${selector}`);
+                                }
+                            }
+                        } catch (error) {
+                            if (debugMode) console.log(`[DEBUG] Error clicking on ${selector}: ${error.message}`);
+                        }
+                    }
+                }
+                
+                // Wait after clicks so content can load
+                if (expandedCount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 2000 + expandedCount * 500));
+                }
+                
+                return expandedCount;
+            }, selectors, debugMode);
+            
+            if (debugMode) console.log(`[DEBUG] Number of expanded panels/rows: ${expanded}`);
+            return expanded;
+        }
+
         // Improved waiting strategy for Grafana 12
         console.log("Waiting for panels to initialize...");
         await page.evaluate(timeout => {
             return new Promise(resolve => setTimeout(resolve, timeout));
         }, 3000);
         // Initial wait for panels to start loading
+
+        // Expand panels if enabled
+        const expandPanels = process.env.EXPAND_COLLAPSED_PANELS !== 'false';
+        if (expandPanels) {
+            console.log("Searching and expanding collapsed panels/rows...");
+            const expanded = await expandCollapsedPanels(page);
+            if (expanded > 0) {
+                console.log(`Expanded ${expanded} panels/rows. Waiting for content to load...`);
+                await page.evaluate(timeout => new Promise(resolve => setTimeout(resolve, timeout)), 2000 + expanded * 500);
+            } else {
+                console.log("No collapsed panels/rows found.");
+            }
+        } else {
+            console.log("Automatic expansion of collapsed panels is disabled.");
+        }
 
         await page.evaluate(() => {
             let infoCorners = document.getElementsByClassName('panel-info-corner');
