@@ -68,7 +68,7 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         await page.goto(finalUrl, {waitUntil: 'networkidle0'});
         console.log("Page loaded...");
 
-        if (process.env.CHECK_QUERIES_TO_COMPLETE === 'true') {
+        if (process.env.CHECK_QUERIES_TO_COMPLETE === 'true' && !finalUrl.includes('viewPanel=')) {
             console.log("Waiting for all queries to complete...");
 
             await page.evaluate(async () => {
@@ -253,15 +253,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         outfile = `./output/${dashboardName.replace(/\s+/g, '_')}_${date.replace(/\s+/g, '_')}${addRandomStr ? '_' + Math.random().toString(36).substring(7) : ''}.pdf`;
 
-        const loginPageDetected = await page.evaluate(() => {
-            const resetPasswordButton = document.querySelector('a[href*="reset-email"]');
-            return !!resetPasswordButton;
-        })
-
-        if (loginPageDetected) {
-            throw new Error("Login page detected. Check your credentials.");
-        }
-
         if(process.env.DEBUG_MODE === 'true') {
             const documentHTML = await page.evaluate(() => {
                 return document.querySelector("*").outerHTML;
@@ -275,20 +266,30 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         }
 
+        const loginPageDetected = await page.evaluate(() => {
+            const resetPasswordButton = document.querySelector('a[href*="reset-email"]');
+            return !!resetPasswordButton;
+        })
+
+        if (loginPageDetected) {
+            throw new Error("Login page detected. Check your credentials.");
+        }
+
         const totalHeight = await page.evaluate(() => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
+            const scrollableSection = document.querySelector('#pageContent div[class*="-page-wrapper"]');
             return scrollableSection ? scrollableSection.firstElementChild.scrollHeight : null;
         });
 
         if (!totalHeight) {
-            throw new Error("Unable to determine the page height. The selector '.scrollbar-view' might be incorrect or missing.");
+            throw new Error("Unable to determine the page height. The selector '#pageContent div[class*=\"-page-wrapper\"]' might be incorrect or missing.");
         } else {
             console.log("Page height adjusted to:", totalHeight);
         }
 
         await page.evaluate(async () => {
-            const scrollableSection = document.querySelector('.scrollbar-view');
+            const scrollableSection = document.querySelector('#pageContent div[class*="-page-wrapper"]');
             if (scrollableSection) {
+                scrollableSection.querySelector('div[data-testid*="data-testid dashboard controls"]').remove();
                 const childElement = scrollableSection.firstElementChild;
                 let scrollPosition = 0;
                 let viewportHeight = window.innerHeight;
