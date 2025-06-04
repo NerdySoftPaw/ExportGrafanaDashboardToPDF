@@ -65,8 +65,8 @@
 
 
 <div style="display:flex; align-items:center;justify-content:space-between;">
-    <p id="display_actual_dashboard_title" style="margin: 0;line-height: 1rem;">${__dashboard}</p>
-    <p id="display_actual_date" style="margin: 0;line-height: 1rem;text-transform:capitalize;"></p>
+    <p id="gfexp_display_actual_dashboard_title" style="margin: 0;line-height: 1rem;">${__dashboard}</p>
+    <p id="gfexp_display_actual_date" style="margin: 0;line-height: 1rem;text-transform:capitalize;"></p>
 </div>
 
 <script>
@@ -80,7 +80,7 @@
         let fromTimestampGrafana = ${__from};
         let toTimestampGrafana = ${__to};
 
-        document.getElementById("display_actual_date").innerHTML = formatTimestamp(fromTimestampGrafana) + " - " + formatTimestamp(toTimestampGrafana);
+        document.getElementById("gfexp_display_actual_date").innerHTML = formatTimestamp(fromTimestampGrafana) + " - " + formatTimestamp(toTimestampGrafana);
     })();
 </script>
 

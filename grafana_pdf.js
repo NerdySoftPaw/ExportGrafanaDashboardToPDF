@@ -88,12 +88,12 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         if (process.env.EXTRACT_DATE_AND_DASHBOARD_NAME_FROM_HTML_PANEL_ELEMENTS === 'true') {
             console.log("Extracting dashboard name and date from the HTML page...");
             let scrapedDashboardName = await page.evaluate(() => {
-                const dashboardElement = document.getElementById('display_actual_dashboard_title');
+                const dashboardElement = document.getElementById('gfexp_display_actual_dashboard_title');
                 return dashboardElement ? dashboardElement.innerText.trim() : null;
             });
 
             let scrapedDate = await page.evaluate(() => {
-                const dateElement = document.getElementById('display_actual_date');
+                const dateElement = document.getElementById('gfexp_display_actual_date');
                 return dateElement ? dateElement.innerText.trim() : null;
             });
 
