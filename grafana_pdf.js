@@ -575,24 +575,50 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
                 }
             });
 
-            const panelQueryCount = await page.evaluate(async () => {
+            const excludedTypes = ['text'];
+
+            function countValidPanels(panels) {
+                let count = 0;
+
+                for (const panel of panels) {
+                    if (excludedTypes.includes(panel.type)) continue;
+
+                    if (panel.datasource) count++;
+
+                    if (panel.type === 'row' && Array.isArray(panel.panels)) {
+                        count += countValidPanels(panel.panels);
+                    }
+                }
+
+                return count;
+            }
+
+            const panelQueryCount = await page.evaluate(async (excludedTypes) => {
                 const url = window.performance.getEntriesByType("resource")
-                    .filter(request => (request.initiatorType === 'fetch' && request.name.includes('/dashboards/uid/')))[0].name;
-                console.log(url)
+                    .find(request => request.initiatorType === 'fetch' && request.name.includes('/dashboards/uid/')).name;
+
                 const response = await fetch(url);
                 const json = await response.json();
                 const panels = json.dashboard.panels || [];
-                let count = panels.filter(panel => panel.datasource).length;
 
-                panels
-                    .filter(panel => panel.type === 'row' && Array.isArray(panel.panels))
-                    .forEach(rowPanel => {
-                        count += rowPanel.panels.filter(subPanel => subPanel.datasource).length;
-                    });
-                console.log(`Total Panel Queries Expected: ${count}`);
+                function countValidPanels(panels) {
+                    let count = 0;
 
-                return count;
-            });
+                    for (const panel of panels) {
+                        if (excludedTypes.includes(panel.type)) continue;
+                        if (panel.datasource) count++;
+                        if (panel.type === 'row' && Array.isArray(panel.panels)) {
+                            count += countValidPanels(panel.panels);
+                        }
+                    }
+
+                    return count;
+                }
+
+                const total = countValidPanels(panels);
+                console.log(`Total Panel Queries Expected: ${total}`);
+                return total;
+            }, excludedTypes);
 
             const maxWaitTime = process.env.CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT || 60000;
             const interval = process.env.CHECK_QUERIES_TO_COMPLETE_QUERIES_INTERVAL || 4000;
