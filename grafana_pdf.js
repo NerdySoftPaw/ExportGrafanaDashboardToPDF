@@ -34,19 +34,26 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
         let finalUrl = url;
         if(process.env.FORCE_KIOSK_MODE === 'true') {
-            console.log("Checking if kiosk mode is enabled.")
-            if (!finalUrl.includes('&kiosk')) {
-                console.log("Kiosk mode not enabled. Enabling it.")
-                finalUrl += '&kiosk=true';
+            console.log("Checking if kiosk mode is enabled.");
+            const urlObj = new URL(finalUrl);
+            if (!urlObj.searchParams.has('kiosk')) {
+                console.log("Kiosk mode not enabled. Enabling it.");
+                urlObj.searchParams.set('kiosk', '1');
+                finalUrl = urlObj.toString();
             }
-            console.log("Kiosk mode enabled.")
+            console.log("Final URL with kiosk mode:", finalUrl);
         }
 
         console.log("Starting browser...");
         const browser = await puppeteer.launch({
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-gpu',
+              '--disable-dev-shm-usage'
+            ]
         });
 
         const page = await browser.newPage();
@@ -63,7 +70,10 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         });
 
         console.log("Navigating to URL...");
-        await page.goto(finalUrl, {waitUntil: 'networkidle0'});
+        await page.goto(finalUrl, {
+          waitUntil: ['networkidle0', 'domcontentloaded'],
+          timeout: 60000
+        });
         console.log("Page loaded...");
 
         page.on('console', msg => {
