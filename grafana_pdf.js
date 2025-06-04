@@ -66,6 +66,11 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         await page.goto(finalUrl, {waitUntil: 'networkidle0'});
         console.log("Page loaded...");
 
+        page.on('console', msg => {
+            for (let i = 0; i < msg.args().length; ++i)
+                msg.args()[i].jsonValue().then(val => console.log(`[Browser console] ${msg.type()}:`, val));
+        });
+
         let dashboardName = 'output_grafana';
         let date = new Date().toISOString().split('T')[0];
         let addRandomStr = false;
@@ -559,12 +564,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
                     }
                 }
             });
-
-            page.on('console', msg => {
-                for (let i = 0; i < msg.args().length; ++i)
-                    msg.args()[i].jsonValue().then(val => console.log(`[Browser console] ${msg.type()}:`, val));
-            });
-
 
             const panelQueryCount = await page.evaluate(async () => {
                 const url = window.performance.getEntriesByType("resource")
