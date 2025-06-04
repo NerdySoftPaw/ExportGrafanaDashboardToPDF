@@ -66,75 +66,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         await page.goto(finalUrl, {waitUntil: 'networkidle0'});
         console.log("Page loaded...");
 
-        if (process.env.CHECK_QUERIES_TO_COMPLETE === 'true' && !finalUrl.includes('viewPanel=')) {
-            console.log("Waiting for all queries to complete...");
-
-            await page.evaluate(async () => {
-                const scrollableSection = document.querySelector('.scrollbar-view');
-                if (scrollableSection) {
-                    console.log("Scrolling to the bottom of the page to trigger all queries...");
-                    const totalScrollHeight = scrollableSection.scrollHeight;
-                    const viewportHeight = window.innerHeight;
-                    let scrollPosition = 0;
-
-                    while (scrollPosition < totalScrollHeight) {
-                        scrollableSection.scrollBy(0, viewportHeight);
-                        scrollPosition += viewportHeight;
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                }
-            });
-
-            const panelQueryCount = await page.evaluate(async () => {
-                const url = window.performance.getEntriesByType("resource")
-                    .filter(request => (request.initiatorType === 'fetch' && request.name.includes('/dashboards/uid/')))[0].name;
-
-                const response = await fetch(url);
-                const json = await response.json();
-                const count = json.dashboard.panels.filter(panel => panel.targets).length;
-
-                console.log(`Total Panel Queries Expected: ${count}`);
-                return count;
-            });
-
-            const maxWaitTime = process.env.CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT || 60000;
-            const interval = 2000;
-            let elapsedTime = 0;
-            let lastCompletedCount = 0;
-            let stableCountTime = 0;
-
-            while (elapsedTime < maxWaitTime) {
-                const completedQueryCount = await page.evaluate(() => {
-                    return window.performance.getEntriesByType("resource")
-                        .filter(request => (request.initiatorType === 'fetch' && request.name.includes('query?'))).length;
-                });
-
-                console.log(`Completed Queries: ${completedQueryCount} / ${panelQueryCount}`);
-
-                if (completedQueryCount === panelQueryCount) {
-                    console.log("All queries have completed.");
-                    break;
-                }
-
-                if (completedQueryCount === lastCompletedCount) {
-                    stableCountTime += interval;
-                    if (stableCountTime >= process.env.CHECK_QUERIES_TO_COMPLETE_MAX_QUERY_COMPLETION_TIME || 30000) {
-                        throw new Error("Query completion seems to be stuck. Exiting after no progress for " + process.env.CHECK_QUERIES_TO_COMPLETE_MAX_QUERY_COMPLETION_TIME +"ms.");
-                    }
-                } else {
-                    stableCountTime = 0;
-                }
-
-                lastCompletedCount = completedQueryCount;
-                await new Promise(resolve => setTimeout(resolve, interval));
-                elapsedTime += interval;
-            }
-
-            if (elapsedTime >= maxWaitTime) {
-                throw new Error("Timeout: Not all queries completed within the allowed time.");
-            }
-        }
-
         let dashboardName = 'output_grafana';
         let date = new Date().toISOString().split('T')[0];
         let addRandomStr = false;
@@ -351,14 +282,87 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             }
         });
 
-        // Wait longer for lazy-loaded panels in Grafana 12
-        console.log("Waiting for all panels to fully render...");
-        await page.evaluate(timeout => {
-            return new Promise(resolve => setTimeout(resolve, timeout));
-        }, process.env.PANEL_RENDER_TIMEOUT || 8000);
+        async function expandCollapsedPanels(page) {
+            const debugMode = process.env.DEBUG_MODE === 'true';
+            if (debugMode) console.log('[DEBUG] Searching for collapsed panels/rows...');
 
+            // Panel and row selectors for different Grafana versions
+            const selectors = [
+                '[data-testid="panel"][aria-expanded="false"]',
+                '.panel-collapsed',
+                '.row-collapsed',
+                '.dashboard-row--collapsed',
+                '.dashboard-row[aria-expanded="false"]',
+                '.panel-title-container .fa-chevron-right',
+                '.panel-title-container .fa-angle-right',
+                '.panel-title-container .fa-caret-right',
+                '.dashboard-row__title .fa-chevron-right',
+                '.dashboard-row__title .fa-angle-right',
+                '.dashboard-row__title .fa-caret-right',
+                '.row-title-container .fa-chevron-right',
+                '.row-title-container .fa-angle-right',
+                '.row-title-container .fa-caret-right',
+                'button[aria-label="Expand row"]'
+            ];
+
+            const expanded = await page.evaluate(async (selectors, debugMode) => {
+                let expandedCount = 0;
+
+                for (const selector of selectors) {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements.length > 0 && debugMode) {
+                        console.log(`[DEBUG] Found expandable elements for ${selector}: ${elements.length}`);
+                    }
+
+                    for (const el of elements) {
+                        try {
+                            // Try clicking on the expand icon
+                            if (typeof el.click === 'function') {
+                                el.click();
+                                expandedCount++;
+                                if (debugMode) console.log(`[DEBUG] Clicked on element: ${selector}`);
+                            } else {
+                                // Fallback: Try clicking on parent element
+                                if (el.parentElement && typeof el.parentElement.click === 'function') {
+                                    el.parentElement.click();
+                                    expandedCount++;
+                                    if (debugMode) console.log(`[DEBUG] Clicked on parent element: ${selector}`);
+                                }
+                            }
+                        } catch (error) {
+                            if (debugMode) console.log(`[DEBUG] Error clicking on ${selector}: ${error.message}`);
+                        }
+                    }
+                }
+
+                // Wait after clicks so content can load
+                if (expandedCount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 2000 + expandedCount * 500));
+                }
+
+                return expandedCount;
+            }, selectors, debugMode);
+
+            if (debugMode) console.log(`[DEBUG] Number of expanded panels/rows: ${expanded}`);
+            return expanded;
+        }
+
+        const expandPanels = process.env.EXPAND_COLLAPSED_PANELS !== 'false';
+        if (expandPanels) {
+            console.log("Searching and expanding collapsed panels/rows...");
+            const expanded = await expandCollapsedPanels(page);
+            if (expanded > 0) {
+                console.log(`Expanded ${expanded} panels/rows. Waiting for content to load...`);
+                await page.evaluate(timeout => new Promise(resolve => setTimeout(resolve, timeout)), 2000 + expanded * 500);
+            } else {
+                console.log("No collapsed panels/rows found.");
+            }
+        } else {
+            console.log("Automatic expansion of collapsed panels is disabled.");
+        }
 
         // IMPROVED: Enhanced height detection with Grafana 12 specific selectors
+        let scrollableSection = null;
         const totalHeight = await page.evaluate(() => {
             console.log("Attempting to detect page height with multiple selectors...");
 
@@ -376,7 +380,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
                 'body'                                  // Ultimate fallback
             ];
 
-            let scrollableSection = null;
             let selectorUsed = '';
 
             // Try each selector until we find one
@@ -538,6 +541,87 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
                 });
             });
         }, process.env.HIDE_DASHBOARD_CONTROLS === 'true');
+
+        if (process.env.CHECK_QUERIES_TO_COMPLETE === 'true' && !finalUrl.includes('viewPanel=')) {
+            console.log("Waiting for all queries to complete...");
+
+            await page.evaluate(async () => {
+                if (scrollableSection) {
+                    console.log("Scrolling to the bottom of the page to trigger all queries...");
+                    const totalScrollHeight = scrollableSection.scrollHeight;
+                    const viewportHeight = window.innerHeight;
+                    let scrollPosition = 0;
+
+                    while (scrollPosition < totalScrollHeight) {
+                        scrollableSection.scrollBy(0, viewportHeight);
+                        scrollPosition += viewportHeight;
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+            });
+
+            page.on('console', msg => {
+                for (let i = 0; i < msg.args().length; ++i)
+                    msg.args()[i].jsonValue().then(val => console.log(`[Browser console] ${msg.type()}:`, val));
+            });
+
+
+            const panelQueryCount = await page.evaluate(async () => {
+                const url = window.performance.getEntriesByType("resource")
+                    .filter(request => (request.initiatorType === 'fetch' && request.name.includes('/dashboards/uid/')))[0].name;
+                console.log(url)
+                const response = await fetch(url);
+                const json = await response.json();
+                const panels = json.dashboard.panels || [];
+                let count = panels.filter(panel => panel.datasource).length;
+
+                panels
+                    .filter(panel => panel.type === 'row' && Array.isArray(panel.panels))
+                    .forEach(rowPanel => {
+                        count += rowPanel.panels.filter(subPanel => subPanel.datasource).length;
+                    });
+                console.log(`Total Panel Queries Expected: ${count}`);
+
+                return count;
+            });
+
+            const maxWaitTime = process.env.CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT || 60000;
+            const interval = process.env.CHECK_QUERIES_TO_COMPLETE_QUERIES_INTERVAL || 4000;
+            let elapsedTime = 0;
+            let lastCompletedCount = 0;
+            let stableCountTime = 0;
+
+            while (elapsedTime < maxWaitTime) {
+                const completedQueryCount = await page.evaluate(() => {
+                    return window.performance.getEntriesByType("resource")
+                        .filter(request => (request.initiatorType === 'fetch' && request.name.includes('query?'))).length;
+                });
+
+                console.log(`Completed Queries: ${completedQueryCount} / ${panelQueryCount}`);
+
+                if (completedQueryCount === panelQueryCount) {
+                    console.log("All queries have completed.");
+                    break;
+                }
+
+                if (completedQueryCount === lastCompletedCount) {
+                    stableCountTime += interval;
+                    if (stableCountTime >= process.env.CHECK_QUERIES_TO_COMPLETE_MAX_QUERY_COMPLETION_TIME || 30000) {
+                        throw new Error("Query completion seems to be stuck. Exiting after no progress for " + process.env.CHECK_QUERIES_TO_COMPLETE_MAX_QUERY_COMPLETION_TIME +"ms.");
+                    }
+                } else {
+                    stableCountTime = 0;
+                }
+
+                lastCompletedCount = completedQueryCount;
+                await new Promise(resolve => setTimeout(resolve, interval));
+                elapsedTime += interval;
+            }
+
+            if (elapsedTime >= maxWaitTime) {
+                throw new Error("Timeout: Not all queries completed within the allowed time.");
+            }
+        }
 
         // Add a final check for all panels and ensure they're visible
         await page.evaluate(async () => {
