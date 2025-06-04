@@ -72,7 +72,7 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         console.log("Navigating to URL...");
         await page.goto(finalUrl, {
           waitUntil: ['networkidle0', 'domcontentloaded'],
-          timeout: 60000
+          timeout: process.env.PUPPETEER_NAVIGATION_TIMEOUT || 120000
         });
         console.log("Page loaded...");
 
