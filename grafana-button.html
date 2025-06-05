@@ -4,8 +4,8 @@
         if (window.gfexpAlreadyInjected) return;
         window.gfexpAlreadyInjected = true;
 
-        window.gfexpPdfGenerationServerUrl = 'http://192.168.10.132:3001';
-        window.gfexpLanguage = 'fr'; // fr or en
+        window.gfexpPdfGenerationServerUrl = 'http://localhost:3001';
+        window.gfexpLanguage = 'en'; // fr or en
 
         window.gfexpLangs = {
             fr: {
@@ -76,7 +76,7 @@
         function formatTimestamp(timestamp) {
             const date = new Date(timestamp);
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            return date.toLocaleDateString('fr-FR', options);
+            return date.toLocaleDateString( window.gfexpLang === 'fr' ? 'fr-FR' : 'en-US', options);
         }
 
         let fromTimestampGrafana = ${__from};

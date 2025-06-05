@@ -16,8 +16,8 @@ It is possible to inject a button into Grafana to generate a PDF directly from t
 Clone this repository and navigate to the project directory:
 
 ```shell
-git clone https://github.com/arthur-mdn/grafana-export-to-pdf/
-cd grafana-export-to-pdf
+git clone https://github.com/arthur-mdn/ExportGrafanaDashboardToPDF.git
+cd ExportGrafanaDashboardToPDF
 ```
 
 ## Configuration
@@ -33,8 +33,8 @@ nano .env
 Modify the values according to your configuration.
 
 ```dotenv
-GRAFANA_USER=pdf_export
-GRAFANA_PASSWORD=pdf_export
+GRAFANA_USER=gfexp
+GRAFANA_PASSWORD=gfexp
 ```
 
 `GRAFANA_USER` and `GRAFANA_PASSWORD` are the credentials used to authenticate to the Grafana instance.
@@ -56,13 +56,13 @@ The server will respond with the URL of the generated PDF.
 curl \
   -H "Content-Type: application/json" \
   -X POST \
-  -d '{ "url": "http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk"}' \
+  -d '{ "url": "http://your-grafana-server/d/your-dashboard-id"}' \
   http://localhost:3001/generate-pdf
 ```
 
 #### Using the `generate-pdf.sh` shell script
 ```bash
-docker compose exec grafana-export-to-pdf /usr/src/app/generate-pdf.sh GF_DASH_URL 'http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk'
+docker exec -it grafana-export-to-pdf /usr/src/app/generate-pdf.sh GF_DASH_URL 'http://your-grafana-server/d/your-dashboard-id'
 ```
 
 #### Using an HTML button injected into Grafana
@@ -74,14 +74,19 @@ To inject a button directly into Grafana, add the content of the `grafana-button
 
 ![How to inject the button in Grafana](https://github.com/arthur-mdn/grafana-export-to-pdf/blob/main/illustrations/inject-button-in-grafana.png)
 
-Make sure to modify the server URL if necessary. You can easily deactivate the button injection by setting the `pdfGeneration` variable to `false`.
-
+Make sure to modify the server URL if necessary. 
 ```javascript
-const pdfGeneration = true;
-const pdfGenerationServerUrl = 'http://localhost:3001/';
+window.gfexpPdfGenerationServerUrl = 'http://localhost:3001';
 ```
 
 The button should now be displayed in the native Grafana share menu.
+
+You can easily deactivate the button injection by commenting the HTML marker
+```html
+<!-- <div id="GFEXP_marker"> -->
+  <!-- This is a marker to enable HTML injection in this panel -->
+<!-- </div> -->
+```
 
 ### Generating a PDF with a time range
 
@@ -92,7 +97,7 @@ The button should now be displayed in the native Grafana share menu.
 To generate a PDF with a time range, you can simply add the native Grafana time range parameters to the URL.
 
 ```shell
-http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk&from=now-1y%2Fy&to=now-1y%2Fy
+http://your-grafana-server/d/your-dashboard-id?from=now-1y%2Fy&to=now-1y%2Fy
 ```
 
 But you can also specify the time range manually by specifying the `from` and `to` parameters in the request.
@@ -102,19 +107,19 @@ But you can also specify the time range manually by specifying the `from` and `t
 curl \
   -H "Content-Type: application/json" \
   -X POST \
-  -d '{ "url": "http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk", "from": "now-1y/y", "to": "now-1y/y"}' \
+  -d '{ "url": "http://your-grafana-server/d/your-dashboard-id", "from": "now-1y/y", "to": "now-1y/y"}' \
   http://localhost:3001/generate-pdf
 ```
 
 #### Using the `generate-pdf.sh` shell script
 ```bash
-docker compose exec server /usr/src/app/generate-pdf.sh GF_DASH_URL 'http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk' GF_FROM 'now-1y/y' GF_TO 'now-1y/y'
+docker exec -it grafana-export-to-pdf /usr/src/app/generate-pdf.sh GF_DASH_URL 'http://your-grafana-server/d/your-dashboard-id' GF_FROM 'now-1y/y' GF_TO 'now-1y/y'
 ```
 
 #### Using the HTML button injected into Grafana
-The injected HTML button already retrieves the values of the selected time range in Grafana. You do not need to specify them manually. It also retrieves the theme selected from the share panel.
+The injected HTML button already retrieves the values of the selected time range in Grafana. You do not need to specify them manually. It also retrieves the theme selected.
 
-![Share Panel Values](https://github.com/arthur-mdn/grafana-export-to-pdf/blob/main/illustrations/share-modal-values.png)
+![Export Panel Values](https://github.com/arthur-mdn/grafana-export-to-pdf/blob/main/illustrations/export-modal-values.png)
 
 
 ### Generating a PDF with only a specific panel
@@ -122,7 +127,7 @@ The injected HTML button already retrieves the values of the selected time range
 By default, the server exports the entire dashboard. If you want to export a single panel, you can add the `viewPanel` parameter to the URL.
 
 ```shell
-http://your-grafana-server/d/your-dashboard-id?orgId=1&kiosk&viewPanel=2
+http://your-grafana-server/d/your-dashboard-id?viewPanel=2
 ```
 
 By using the HTML button injected into Grafana, you can simply click the share button of the panel you want to export, and then you will find the Export to PDF button.
@@ -138,7 +143,7 @@ By using the HTML button injected into Grafana, you can simply click the share b
 To avoid fetching the dashboard name and the time range from the URL (that are sometimes not user-friendly), you can extract the values directly from HTML elements in the Grafana dashboard with a better display format.
 
 #### Example
-For this URL: `http://localhost/d/ID/stats?orgId=1&from=now-1y%2Fy&to=now-1y%2Fy`
+For this URL: `http://localhost/d/ID/stats?from=now-1y%2Fy&to=now-1y%2Fy`
 - The initial PDF filename will be: `stats_now-1y_y_to_now-1y_y.pdf`
 - With the custom configuration, the PDF filename could be: `Stats_Sunday_January_1_2023_-_Sunday_December_31_2023.pdf`
 
@@ -152,22 +157,24 @@ EXTRACT_DATE_AND_DASHBOARD_NAME_FROM_HTML_PANEL_ELEMENTS=true
 And then add the following code to the Grafana panel where you want to display the dashboard name and the time range. You can customize the display format by modifying the `formatTimestamp` function in the script below:
 
 ```html
-<div>
-    <p id="display_actual_dashboard_title">${__dashboard}</p>
-    <p id="display_actual_date" style="text-transform:capitalize;"></p>
+
+<div style="display:flex; align-items:center;justify-content:space-between;">
+  <p id="gfexp_display_actual_dashboard_title" style="margin: 0;line-height: 1rem;">${__dashboard}</p>
+  <p id="gfexp_display_actual_date" style="margin: 0;line-height: 1rem;text-transform:capitalize;"></p>
 </div>
+
 <script>
     (function() {
         function formatTimestamp(timestamp) {
             const date = new Date(timestamp);
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            return date.toLocaleDateString('en-US', options);
+            return date.toLocaleDateString( window.gfexpLang === 'fr' ? 'fr-FR' : 'en-US', options);
         }
 
         let fromTimestampGrafana = ${__from};
         let toTimestampGrafana = ${__to};
 
-        document.getElementById("display_actual_date").innerHTML = formatTimestamp(fromTimestampGrafana) + " - " + formatTimestamp(toTimestampGrafana);
+        document.getElementById("gfexp_display_actual_date").innerHTML = formatTimestamp(fromTimestampGrafana) + " - " + formatTimestamp(toTimestampGrafana);
     })();
 </script>
 ```
@@ -193,6 +200,11 @@ You can enable this behavior by setting the following variable to `true` in your
 ```dotenv
 DEBUG_MODE=true
 ```
+### Hide Dashboard Controls
+By default, `HIDE_DASHBOARD_CONTROLS` is set to `true`. This means that the server will hide the dashboard controls (such as the time range selector, the share button, etc.) when generating the PDF. This can be useful to have a cleaner PDF output.
+
+### Expand Collapsed Panels
+By default, `EXPAND_COLLAPSED_PANELS` is set to `true`. This means that the server will expand all collapsed panels when generating the PDF. This can be useful to ensure that all panels are visible in the PDF output.
 
 ### Check for all queries to be completed
 
@@ -210,10 +222,11 @@ You can enable this behavior by setting the following variable to `true` in your
 CHECK_QUERIES_TO_COMPLETE=true
 ```
 
-You can also set the maximum time to wait for each single query to be completed, and the maximum time to wait for all the queries to be completed, before generating the PDF.
+You can also set the maximum time to wait for each single query to be completed, the interval between each check for the queries completion, and the maximum time to wait for all the queries to be completed, before generating the PDF.
 
 ```dotenv
 CHECK_QUERIES_TO_COMPLETE_MAX_QUERY_COMPLETION_TIME=30000
+CHECK_QUERIES_TO_COMPLETE_QUERIES_INTERVAL=1000
 CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT=60000
 ```
 
@@ -233,3 +246,5 @@ CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT=60000
 ### Contributing
 
 - [svet-b](https://gist.github.com/svet-b/1ad0656cd3ce0e1a633e16eb20f66425)
+- [NerdySoftPaw](https://github.com/NerdySoftPaw)
+- [christos-diamantis](https://github.com/christos-diamantis)
