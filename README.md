@@ -188,7 +188,9 @@ FORCE_KIOSK_MODE=false
 > Disabling this feature would have no effect if the `kiosk` parameter is already present in the URL given to the server.
 
 ### Debug Mode
-By default, `DEBUG_MODE` is set to `false`. When activated, the server will save the HTML content of the page to a file in the `debug` folder. This can be useful for debugging purposes. 
+By default, `DEBUG_MODE` is set to `false`. When activated, the server will save the HTML content of the page to a file in the `debug` folder. 
+There is also more verbose logging in the console, which can help you understand what is happening during the PDF generation process.
+This can be useful for debugging purposes. 
 
 #### Activation
 You can enable this behavior by setting the following variable to `true` in your `.env` file:
