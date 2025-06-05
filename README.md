@@ -130,10 +130,6 @@ By default, the server exports the entire dashboard. If you want to export a sin
 http://your-grafana-server/d/your-dashboard-id?viewPanel=2
 ```
 
-By using the HTML button injected into Grafana, you can simply click the share button of the panel you want to export, and then you will find the Export to PDF button.
-
-![Export Single Panel](https://github.com/arthur-mdn/grafana-export-to-pdf/blob/main/illustrations/share-single-panel.png)
-
 > The script will try to extract the panel title and use it in the PDF filename.
 
 ## Custom Configuration
