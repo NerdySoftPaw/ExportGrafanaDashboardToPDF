@@ -1,8 +1,10 @@
 services:
   grafana-export-to-pdf:
     build: .
+    container_name: grafana-export-to-pdf
     ports:
       - "${EXPORT_SERVER_PORT:-3001}:${EXPORT_SERVER_PORT:-3001}"
+    network_mode: "host"
     volumes:
       - ./output:/usr/src/app/output
     environment:

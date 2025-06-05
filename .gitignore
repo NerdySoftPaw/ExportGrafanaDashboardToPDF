@@ -3,6 +3,8 @@ node_modules
 
 output/*
 !output/.gitkeep
+debug/*
+!debug/.gitkeep
 
 .env
 .DS_Store
