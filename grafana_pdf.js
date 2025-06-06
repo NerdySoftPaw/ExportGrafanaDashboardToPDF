@@ -384,6 +384,90 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             console.log("Automatic expansion of collapsed panels is disabled.");
         }
 
+        const expandTables = process.env.EXPAND_TABLES !== 'false';
+        if (expandTables) {
+            console.log("Looking for tables to expand...");
+
+            const expandedTables = await page.evaluate(async () => {
+                const panelSelectors = [
+                    'div.react-grid-item',
+                    'div[data-griditem-key]',
+                    'div[class*="react-grid-item"]'
+                ];
+
+                const tableSelectors = [
+                    'div[role="table"]',
+                    '[data-testid*="panel content"] div[role="table"]',
+                    '[data-panel-id] div[role="table"]'
+                ];
+
+                const strategies = [
+                    {
+                        name: 'Grafana ≥ v11.5 – nested scrollable view',
+                        selector: '.scrollbar-view > div div[data-testid*="table body"] .scrollbar-view > div > div',
+                    },
+                    {
+                        name: 'Grafana ≤ v11 – fallback inner wrapper',
+                        selector: '.scrollbar-view > div > div',
+                    },
+                    {
+                        name: 'Fallback: direct inner content with height',
+                        selector: '.scrollbar-view div[style*="height"]',
+                    }
+                ];
+
+                const expandedPanels = new Set();
+
+                for (const panelSel of panelSelectors) {
+                    const panels = Array.from(document.querySelectorAll(panelSel));
+                    for (const panel of panels) {
+                        if (expandedPanels.has(panel)) continue;
+
+                        let table = null;
+                        for (const tSel of tableSelectors) {
+                            table = panel.querySelector(tSel);
+                            if (table) break;
+                        }
+                        if (!table) continue;
+
+                        for (const strat of strategies) {
+                            const target = table.querySelector(strat.selector);
+                            if (!target) continue;
+
+                            const originalHeight = target.offsetHeight;
+                            const panelHeight = panel.offsetHeight;
+
+                            if (originalHeight > panelHeight) {
+                                const newHeight = originalHeight + 100;
+                                panel.style.height = `${newHeight}px`;
+                                panel.style.minHeight = `${newHeight}px`;
+
+                                await new Promise(resolve => setTimeout(resolve, 100));
+
+                                const updatedHeight = target.offsetHeight;
+                                console.log(`Height after layout update: ${updatedHeight}px (was: ${originalHeight})`);
+
+                                if (updatedHeight !== newHeight) {
+                                    const finalHeight = updatedHeight + 100;
+                                    panel.style.height = `${finalHeight}px`;
+                                    panel.style.minHeight = `${finalHeight}px`;
+                                    console.log(`Re-adjusted panel to match updated child height: ${finalHeight}px`);
+                                }
+
+                                console.log(`Table panel expanded using strategy: ${strat.name}`);
+                                expandedPanels.add(panel);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                return expandedPanels.size;
+            });
+
+            console.log(`Expanded ${expandedTables} scrollable table(s).`);
+        }
+
         await page.evaluate((hideDashboardControls) => {
             const selectorsToHide = [
                 '.panel-info-corner',
