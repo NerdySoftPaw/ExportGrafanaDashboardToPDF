@@ -255,6 +255,7 @@ CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT=60000
 ```
 
 ### Expand Table Panels
+> Only available in Grafana v11.4+
 By default, `EXPAND_TABLE_PANELS` is set to `false` due to performance concerns. When enabled, the server will try to auto-adjust the height of table panels to fit all the rows when generating the PDF. This can be useful to ensure that all data is visible in the PDF output.
 
 You can enable this feature via your .env file:
