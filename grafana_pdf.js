@@ -5,12 +5,20 @@ const fs = require('fs');
 
 console.log("Script grafana_pdf.js started...");
 
-const url = process.argv[2];
-const auth_string = process.argv[3];
-let outfile = process.argv[4];
+const args = process.argv.slice(2);
+const url = args[0];
+const auth_string = args[1];
+const widthArg = args.find(arg => arg.startsWith('--pdfWidthPx='));
+const heightArg = args.find(arg => arg.startsWith('--pdfHeightPx='));
+let outfile = null;
 
-const width_px = parseInt(process.env.PDF_WIDTH_PX, 10) || 1200;
+const width_px = widthArg ? parseInt(widthArg.split('=')[1], 10) : parseInt(process.env.PDF_WIDTH_PX, 10) || 1920;
+const envHeight = process.env.PDF_HEIGHT_PX;
+const overrideHeight = heightArg
+    ? parseInt(heightArg.split('=')[1], 10)
+    : (envHeight && envHeight !== 'auto') ? parseInt(envHeight, 10) : null;
 console.log("PDF width set to:", width_px);
+console.log("PDF height set to:", overrideHeight !== null ? overrideHeight : "auto (auto-detected)");
 
 const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
 
@@ -376,6 +384,30 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
             console.log("Automatic expansion of collapsed panels is disabled.");
         }
 
+        await page.evaluate((hideDashboardControls) => {
+            const selectorsToHide = [
+                '.panel-info-corner',
+                '.react-resizable-handle',
+                'div[data-testid*="Alert error"]',
+                'div[data-testid*="title-items-container"]',
+                'div[class*="toolbar-button-panel-menu"]'
+            ];
+
+            if (hideDashboardControls) {
+                selectorsToHide.push(
+                    '.dashboard-controls',
+                    '.dashboard-toolbar',
+                    'div[data-testid*="dashboard controls"]',
+                );
+            }
+
+            selectorsToHide.forEach(selector => {
+                document.querySelectorAll(selector).forEach(el => {
+                    el.hidden = true;
+                });
+            });
+        }, process.env.HIDE_DASHBOARD_CONTROLS === 'true');
+
         // IMPROVED: Enhanced height detection with Grafana 12 specific selectors
         let scrollableSection = null;
         const totalHeight = await page.evaluate(() => {
@@ -532,30 +564,6 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
                 console.log("Progressive scrolling completed");
             });
         }
-
-        await page.evaluate((hideDashboardControls) => {
-            const selectorsToHide = [
-                '.panel-info-corner',
-                '.react-resizable-handle',
-                'div[data-testid*="Alert error"]',
-                'div[data-testid*="title-items-container"]',
-                'div[class*="toolbar-button-panel-menu"]'
-            ];
-
-            if (hideDashboardControls) {
-                selectorsToHide.push(
-                    '.dashboard-controls',
-                    '.dashboard-toolbar',
-                    'div[data-testid*="dashboard controls"]',
-                );
-            }
-
-            selectorsToHide.forEach(selector => {
-                document.querySelectorAll(selector).forEach(el => {
-                    el.hidden = true;
-                });
-            });
-        }, process.env.HIDE_DASHBOARD_CONTROLS === 'true');
 
         if (process.env.CHECK_QUERIES_TO_COMPLETE === 'true' && !finalUrl.includes('viewPanel=')) {
             console.log("Waiting for all queries to complete...");
@@ -719,10 +727,17 @@ const auth_header = 'Basic ' + Buffer.from(auth_string).toString('base64');
         });
 
         console.log("Generating PDF...");
+        let pdfHeight = finalHeight;
+        if (overrideHeight && !isNaN(overrideHeight)) {
+            pdfHeight = overrideHeight;
+            console.log(`Forcing PDF page height to override: ${pdfHeight}px`);
+        } else {
+            console.log(`PDF page height will follow auto-detected content height: ${pdfHeight}px`);
+        }
         await page.pdf({
             path: outfile,
             width: width_px + 'px',
-            height: finalHeight + 'px',
+            height: pdfHeight + 'px',
             printBackground: true,
             scale: 1,
             displayHeaderFooter: false,

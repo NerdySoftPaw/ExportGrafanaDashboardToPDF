@@ -23,7 +23,7 @@ app.get('/check-status', (req, res) => {
   res.send('Server is running');
 });
 app.post('/generate-pdf', (req, res) => {
-  let { url: requestUrl, from, to } = req.body;
+  let { url: requestUrl, from, to, pdfWidthPx, pdfHeightPx } = req.body;
 
   if (!requestUrl) {
     return res.status(400).send('URL is required');
@@ -40,7 +40,12 @@ app.post('/generate-pdf', (req, res) => {
 
   const finalUrl = urlObj.toString();
 
-  const script = fork('grafana_pdf.js', [finalUrl, `${GRAFANA_USER}:${GRAFANA_PASSWORD}`]);
+  const args = [finalUrl, `${GRAFANA_USER}:${GRAFANA_PASSWORD}`];
+
+  if (pdfWidthPx) args.push(`--pdfWidthPx=${pdfWidthPx}`);
+  if (pdfHeightPx) args.push(`--pdfHeightPx=${pdfHeightPx}`);
+
+  const script = fork('grafana_pdf.js', args);
 
   script.on('message', (message) => {
     if (message.success) {

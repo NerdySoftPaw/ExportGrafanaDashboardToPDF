@@ -121,6 +121,32 @@ The injected HTML button already retrieves the values of the selected time range
 
 ![Export Panel Values](https://github.com/arthur-mdn/grafana-export-to-pdf/blob/main/illustrations/export-modal-values.png)
 
+### Generating a PDF with a fixed width and height
+To generate a PDF with a fixed width and height, you can adjust the `PDF_WIDTH_PX` and `PDF_HEIGHT_PX` variables in the `.env` file.
+```dotenv
+PDF_WIDTH_PX=1920
+PDF_HEIGHT_PX=1080
+```
+
+> If you want the PDF to be generated with the same height as the Grafana dashboard, you can set the height variable to `auto`:
+> ```dotenv
+> PDF_HEIGHT_PX=auto
+> ```
+
+But you can also specify the width and height manually by specifying the `pdfWidthPx` and `pdfHeightPx` parameters in the request.
+> Using the `pdfWidthPx` and `pdfHeightPx` parameters will override the values set in the `.env` file.
+#### Using cURL
+```bash
+curl \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{ "url": "http://your-grafana-server/d/your-dashboard-id", "pdfWidthPx": 1920, "pdfHeightPx": 1080}' \
+  http://localhost:3001/generate-pdf
+```
+#### Using the `generate-pdf.sh` shell script
+```bash
+docker exec -it grafana-export-to-pdf /usr/src/app/generate-pdf.sh GF_DASH_URL 'http://your-grafana-server/d/your-dashboard-id' GF_PDF_WIDTH_PX 1920 GF_PDF_HEIGHT_PX 1080
+```
 
 ### Generating a PDF with only a specific panel
 

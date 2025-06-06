@@ -8,28 +8,21 @@ set +a
 # Default values for from and to
 GF_FROM=""
 GF_TO=""
+GF_PDF_WIDTH_PX=""
+GF_PDF_HEIGHT_PX=""
 
 # Check arguments
 while [ "$1" != "" ]; do
     case $1 in
-        GF_DASH_URL )           shift
-                                GF_DASH_URL=$1
-                                ;;
-        GF_USER )               shift
-                                GF_USER=$1
-                                ;;
-        GF_PASSWORD )           shift
-                                GF_PASSWORD=$1
-                                ;;
-        GF_FROM )               shift
-                                GF_FROM=$1
-                                ;;
-        GF_TO )                 shift
-                                GF_TO=$1
-                                ;;
-        * )                     echo "Option $1 not recognized"
-                                exit 1
-    esac
+            GF_DASH_URL )           shift; GF_DASH_URL=$1 ;;
+            GF_USER )               shift; GF_USER=$1 ;;
+            GF_PASSWORD )           shift; GF_PASSWORD=$1 ;;
+            GF_FROM )               shift; GF_FROM=$1 ;;
+            GF_TO )                 shift; GF_TO=$1 ;;
+            GF_PDF_WIDTH_PX )              shift; GF_PDF_WIDTH_PX=$1 ;;
+            GF_PDF_HEIGHT_PX )             shift; GF_PDF_HEIGHT_PX=$1 ;;
+            * )                     echo "Option $1 not recognized"; exit 1 ;;
+        esac
     shift
 done
 
@@ -45,12 +38,10 @@ GF_PASSWORD=${GF_PASSWORD:-$DEFAULT_GF_PASSWORD}
 
 # Add from and to parameters to the POST request if provided
 JSON_PAYLOAD="{\"url\": \"${GF_DASH_URL}\""
-if [ -n "$GF_FROM" ]; then
-  JSON_PAYLOAD="${JSON_PAYLOAD}, \"from\": \"${GF_FROM}\""
-fi
-if [ -n "$GF_TO" ]; then
-  JSON_PAYLOAD="${JSON_PAYLOAD}, \"to\": \"${GF_TO}\""
-fi
+[ -n "$GF_FROM" ]   && JSON_PAYLOAD="${JSON_PAYLOAD}, \"from\": \"${GF_FROM}\""
+[ -n "$GF_TO" ]     && JSON_PAYLOAD="${JSON_PAYLOAD}, \"to\": \"${GF_TO}\""
+[ -n "$GF_PDF_WIDTH_PX" ]  && JSON_PAYLOAD="${JSON_PAYLOAD}, \"pdfWidthPx\": \"${GF_PDF_WIDTH_PX}\""
+[ -n "$GF_PDF_HEIGHT_PX" ] && JSON_PAYLOAD="${JSON_PAYLOAD}, \"pdfHeightPx\": \"${GF_PDF_HEIGHT_PX}\""
 JSON_PAYLOAD="${JSON_PAYLOAD}}"
 
 # Send the HTTP POST request to the Node.js server to generate the PDF
