@@ -254,6 +254,9 @@ CHECK_QUERIES_TO_COMPLETE_QUERIES_INTERVAL=1000
 CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT=60000
 ```
 
+### Expand Table Panels
+By default, `EXPAND_TABLE_PANELS` is set to `true`. This means that the server will try to auto-adjust the height of table panels to fit all the rows when generating the PDF. This can be useful to ensure that all data is visible in the PDF output.
+
 ## Known Issues
 
 ### With injected button in Grafana
