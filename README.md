@@ -255,7 +255,18 @@ CHECK_QUERIES_TO_COMPLETE_QUERIES_COMPLETION_TIMEOUT=60000
 ```
 
 ### Expand Table Panels
-By default, `EXPAND_TABLE_PANELS` is set to `true`. This means that the server will try to auto-adjust the height of table panels to fit all the rows when generating the PDF. This can be useful to ensure that all data is visible in the PDF output.
+By default, `EXPAND_TABLE_PANELS` is set to `false` due to performance concerns. When enabled, the server will try to auto-adjust the height of table panels to fit all the rows when generating the PDF. This can be useful to ensure that all data is visible in the PDF output.
+
+You can enable this feature via your .env file:
+
+```dotenv
+EXPAND_COLLAPSED_TABLES=true
+```
+> ⚠️ **Important Note:** When large tables are expanded, the generated PDF height can grow dramatically (several thousand pixels), which may:
+> - Slow down rendering or cause performance issues during export
+> - Produce unexpectedly long PDFs
+>
+> **Recommendation:** Only enable table expansion for dashboards where full row visibility is critical, or consider adjusting panel sizes manually in Grafana to fit content naturally.
 
 ## Known Issues
 
